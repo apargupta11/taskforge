@@ -53,6 +53,20 @@ CREATE POLICY "Members can view their projects" ON projects FOR SELECT USING (
   EXISTS (SELECT 1 FROM project_members WHERE project_id = projects.id AND user_id = auth.uid())
   OR created_by = auth.uid()
 );
+-- Tasks: align visibility with projects — members OR project creator (not only project_members)
 CREATE POLICY "Members can view tasks in their projects" ON tasks FOR SELECT USING (
   EXISTS (SELECT 1 FROM project_members WHERE project_id = tasks.project_id AND user_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.created_by = auth.uid())
+);
+CREATE POLICY "Members can insert tasks in their projects" ON tasks FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM project_members WHERE project_id = tasks.project_id AND user_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.created_by = auth.uid())
+);
+CREATE POLICY "Members can update tasks in their projects" ON tasks FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM project_members WHERE project_id = tasks.project_id AND user_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.created_by = auth.uid())
+);
+CREATE POLICY "Members can delete tasks in their projects" ON tasks FOR DELETE USING (
+  EXISTS (SELECT 1 FROM project_members WHERE project_id = tasks.project_id AND user_id = auth.uid())
+  OR EXISTS (SELECT 1 FROM projects p WHERE p.id = tasks.project_id AND p.created_by = auth.uid())
 );
