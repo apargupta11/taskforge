@@ -18,6 +18,10 @@ export const api = {
     const headers = await getHeaders();
     return axios.post(`${API_BASE}/projects`, projectData, { headers });
   },
+  deleteProject: async (projectId) => {
+    const headers = await getHeaders();
+    return axios.delete(`${API_BASE}/projects/${projectId}`, { headers });
+  },
   addProjectMember: async (projectId, userId, role) => {
     const headers = await getHeaders();
     return axios.post(`${API_BASE}/projects/${projectId}/members`, { user_id: userId, role }, { headers });
@@ -55,5 +59,9 @@ export const api = {
   getStats: async () => {
     const headers = await getHeaders();
     return axios.get(`${API_BASE}/stats`, { headers });
+  },
+  getStatTasks: async (filter) => {
+    const headers = await getHeaders();
+    return axios.get(`${API_BASE}/stats/tasks`, { headers, params: { filter } });
   }
 };
