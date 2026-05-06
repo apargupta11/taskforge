@@ -107,29 +107,6 @@ const Login = () => {
             </p>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-slate-800">
-            <p className="text-sm text-slate-400 text-center mb-4">Quick Demo Login</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button 
-                onClick={() => { setEmail('admin@taskforge.com'); setPassword('Demo@1234'); }}
-                className="p-2 text-xs font-medium rounded-lg bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-colors border border-violet-500/20"
-              >
-                Login as Admin
-              </button>
-              <button 
-                onClick={() => { setEmail('alex.rivera@taskforge.com'); setPassword('Demo@1234'); }}
-                className="p-2 text-xs font-medium rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors border border-cyan-500/20"
-              >
-                Login as Member
-              </button>
-              <button 
-                onClick={() => { setEmail('viewer@taskforge.com'); setPassword('Demo@1234'); }}
-                className="p-2 text-xs font-medium rounded-lg bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition-colors border border-amber-500/20 col-span-2"
-              >
-                Login as Viewer
-              </button>
-            </div>
-          </div>
         </div>
       </motion.div>
     </div>
