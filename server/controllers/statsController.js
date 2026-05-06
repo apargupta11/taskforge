@@ -1,23 +1,35 @@
-const { createUserClient } = require('../config/supabase');
+const { supabase } = require('../config/supabase');
 
 exports.getStats = async (req, res) => {
-  const userClient = createUserClient(req.token);
-
-  let query = userClient.from('tasks').select('status, deadline, assigned_to');
+  let query = supabase.from('tasks').select('id, status, deadline, assigned_to, project_id');
   
-  // If user is a viewer, only show their own tasks in the stats
-  if (req.user.role === 'viewer') {
-    query = query.eq('assigned_to', req.user.id);
-  }
-
   const { data: tasks, error } = await query;
-    
   if (error) return res.status(500).json({ error: error.message });
+
+  let visibleTasks = tasks;
+
+  if (req.user.role !== 'admin') {
+    const { data: memberships } = await supabase
+      .from('project_members')
+      .select('project_id, role')
+      .eq('user_id', req.user.id);
+      
+    const userProjects = memberships || [];
+    
+    visibleTasks = tasks.filter(task => {
+      const membership = userProjects.find(m => m.project_id === task.project_id);
+      if (!membership) return false;
+      if (req.user.role === 'viewer' || membership.role === 'viewer') {
+        return task.assigned_to === req.user.id;
+      }
+      return true;
+    });
+  }
   
   const stats = {
-    total: tasks.length,
-    completed: tasks.filter(t => t.status === 'done').length,
-    overdue: tasks.filter(t => t.status !== 'done' && t.deadline && new Date(t.deadline) < new Date()).length
+    total: visibleTasks.length,
+    completed: visibleTasks.filter(t => t.status === 'done').length,
+    overdue: visibleTasks.filter(t => t.status !== 'done' && t.deadline && new Date(t.deadline) < new Date()).length
   };
   
   res.json(stats);
@@ -30,35 +42,50 @@ exports.getStats = async (req, res) => {
  */
 exports.getTaskList = async (req, res) => {
   const { filter } = req.query;
-  const userClient = createUserClient(req.token);
 
   // Join projects so the client can display the project name
-  let query = userClient
+  let query = supabase
     .from('tasks')
     .select('id, title, status, priority, deadline, assigned_to, project_id, projects(name)')
     .order('created_at', { ascending: false });
 
-  if (req.user.role === 'viewer') {
-    query = query.eq('assigned_to', req.user.id);
-  }
-
   const { data: tasks, error } = await query;
   if (error) return res.status(500).json({ error: error.message });
+
+  let visibleTasks = tasks;
+
+  if (req.user.role !== 'admin') {
+    const { data: memberships } = await supabase
+      .from('project_members')
+      .select('project_id, role')
+      .eq('user_id', req.user.id);
+      
+    const userProjects = memberships || [];
+    
+    visibleTasks = tasks.filter(task => {
+      const membership = userProjects.find(m => m.project_id === task.project_id);
+      if (!membership) return false;
+      if (req.user.role === 'viewer' || membership.role === 'viewer') {
+        return task.assigned_to === req.user.id;
+      }
+      return true;
+    });
+  }
 
   const now = new Date();
   let filtered;
   switch (filter) {
     case 'completed':
-      filtered = tasks.filter(t => t.status === 'done');
+      filtered = visibleTasks.filter(t => t.status === 'done');
       break;
     case 'overdue':
-      filtered = tasks.filter(t => t.status !== 'done' && t.deadline && new Date(t.deadline) < now);
+      filtered = visibleTasks.filter(t => t.status !== 'done' && t.deadline && new Date(t.deadline) < now);
       break;
     case 'active':
-      filtered = tasks.filter(t => t.status !== 'done');
+      filtered = visibleTasks.filter(t => t.status !== 'done');
       break;
     default:
-      filtered = tasks;
+      filtered = visibleTasks;
   }
 
   res.json(filtered);

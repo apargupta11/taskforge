@@ -35,7 +35,8 @@ exports.getTasks = async (req, res) => {
     .order('created_at', { ascending: true });
 
   // Viewers are scoped to their own tasks — never trust the client for this
-  if (!PERMISSIONS[role]?.readAllTasks) {
+  // Enforce this if their project role is viewer OR their platform role is viewer
+  if (!PERMISSIONS[role]?.readAllTasks || req.user.role === 'viewer') {
     query = query.eq('assigned_to', req.user.id);
   }
 
