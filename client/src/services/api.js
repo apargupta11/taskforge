@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
 
-const API_BASE = 'https://taskforge-production-6835.up.railway.app/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 
 const getHeaders = async () => {
   const { data: { session } } = await supabase.auth.getSession();
