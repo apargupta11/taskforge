@@ -26,6 +26,9 @@ const authenticate = async (req, res, next) => {
   }
 
   req.token = token;
+  // Attach a user-scoped Supabase client so all DB queries carry the JWT.
+  // This makes auth.uid() resolve correctly in RLS policies.
+  req.supabase = createUserClient(token);
   next();
 };
 
@@ -43,7 +46,8 @@ const loadProjectRole = (paramName = 'projectId') => async (req, res, next) => {
   const projectId = req.params[paramName];
   if (!projectId) return next();
 
-  const { data, error } = await supabase
+  const db = req.supabase || supabase;
+  const { data, error } = await db
     .from('project_members')
     .select('role')
     .eq('project_id', projectId)

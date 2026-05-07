@@ -1,10 +1,10 @@
 const { supabase } = require('../config/supabase');
 const { ROLES, PERMISSIONS } = require('../middleware/rbac');
 
-async function resolveProjectRole(userId, projectId, platformRole) {
+async function resolveProjectRole(userId, projectId, platformRole, db) {
   if (!projectId) return ROLES.VIEWER;
 
-  const { data } = await supabase
+  const { data } = await db
     .from('project_members')
     .select('role')
     .eq('project_id', projectId)
@@ -20,48 +20,42 @@ async function resolveProjectRole(userId, projectId, platformRole) {
  *
  * - admin / member  → all tasks in the project
  * - viewer          → only tasks assigned to them (enforced server-side)
- *
- * RLS is the true enforcement layer; this filter is a belt-and-suspenders guard
- * so the application-level contract is clear and auditable.
  */
-exports.getTasks = async (req, res) => {
+exports.getTasks = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { projectId } = req.params;
   const role = req.projectRole ?? ROLES.VIEWER;
 
-  let query = supabase
+  let query = db
     .from('tasks')
     .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: true });
 
-  // Viewers are scoped to their own tasks — never trust the client for this
-  // Enforce this if their project role is viewer OR their platform role is viewer
+  // Viewers are scoped to their own tasks
   if (!PERMISSIONS[role]?.readAllTasks || req.user.role === 'viewer') {
     query = query.eq('assigned_to', req.user.id);
   }
 
   const { data, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return next(error);
   res.json(data);
 };
 
 /**
  * POST /tasks
- * Requires createTask permission (admin or member only).
- * Route guards enforce this; controller is an explicit last-line check.
  */
-exports.createTask = async (req, res) => {
+exports.createTask = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { project_id, title, description, priority, status, assigned_to } = req.body;
-  // req.projectRole is set by loadProjectRole middleware for project routes.
-  // For standalone POST /tasks we resolve it dynamically from project_id in body.
   const role = req.projectRole
-    ?? await resolveProjectRole(req.user.id, project_id, req.user.role);
+    ?? await resolveProjectRole(req.user.id, project_id, req.user.role, db);
 
   if (!PERMISSIONS[role]?.createTask) {
     return res.status(403).json({ error: 'Viewers cannot create tasks' });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('tasks')
     .insert([{
       project_id,
@@ -74,85 +68,75 @@ exports.createTask = async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.status(201).json(data);
 };
 
 /**
  * PATCH /tasks/:taskId
- *
- * - admin            → update anything
- * - member           → only tasks assigned to them
- * - viewer           → blocked entirely
  */
-exports.updateTask = async (req, res) => {
+exports.updateTask = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { taskId } = req.params;
 
-  // For standalone PATCH we need to look up the project from the task first
   let role = req.projectRole;
   if (!role) {
-    const { data: taskRow } = await supabase
+    const { data: taskRow } = await db
       .from('tasks')
       .select('project_id')
       .eq('id', taskId)
       .single();
     role = taskRow
-      ? await resolveProjectRole(req.user.id, taskRow.project_id, req.user.role)
+      ? await resolveProjectRole(req.user.id, taskRow.project_id, req.user.role, db)
       : ROLES.VIEWER;
   }
 
-  // Viewers blocked before any DB call
-  if (!PERMISSIONS[role]?.createTask) { // createTask doubles as "can mutate tasks"
+  if (!PERMISSIONS[role]?.createTask) {
     return res.status(403).json({ error: 'Viewers cannot modify tasks' });
   }
 
-  // For members who can't update ANY task, verify ownership first
   if (!PERMISSIONS[role]?.updateAnyTask) {
-    const { data: existing, error: fetchErr } = await supabase
+    const { data: existing, error: fetchErr } = await db
       .from('tasks')
       .select('assigned_to')
       .eq('id', taskId)
       .single();
 
-    if (fetchErr) return res.status(404).json({ error: 'Task not found' });
+    if (fetchErr) return next(fetchErr);
     if (existing.assigned_to !== req.user.id) {
       return res.status(403).json({ error: 'You can only edit tasks assigned to you' });
     }
   }
 
-  // Strip fields that should never come from the client
   const { id, project_id, created_at, ...safeUpdates } = req.body;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('tasks')
     .update(safeUpdates)
     .eq('id', taskId)
     .select()
     .single();
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.json(data);
 };
 
 /**
  * DELETE /tasks/:taskId
- *
- * - admin  → can delete any task
- * - member → can delete only tasks assigned to them
- * - viewer → blocked
  */
-exports.deleteTask = async (req, res) => {
+exports.deleteTask = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { taskId } = req.params;
 
   let role = req.projectRole;
   if (!role) {
-    const { data: taskRow } = await supabase
+    const { data: taskRow } = await db
       .from('tasks')
       .select('project_id')
       .eq('id', taskId)
       .single();
     role = taskRow
-      ? await resolveProjectRole(req.user.id, taskRow.project_id, req.user.role)
+      ? await resolveProjectRole(req.user.id, taskRow.project_id, req.user.role, db)
       : ROLES.VIEWER;
   }
 
@@ -161,23 +145,23 @@ exports.deleteTask = async (req, res) => {
   }
 
   if (!PERMISSIONS[role]?.deleteAnyTask) {
-    const { data: existing, error: fetchErr } = await supabase
+    const { data: existing, error: fetchErr } = await db
       .from('tasks')
       .select('assigned_to')
       .eq('id', taskId)
       .single();
 
-    if (fetchErr) return res.status(404).json({ error: 'Task not found' });
+    if (fetchErr) return next(fetchErr);
     if (existing.assigned_to !== req.user.id) {
       return res.status(403).json({ error: 'You can only delete tasks assigned to you' });
     }
   }
 
-  const { error } = await supabase
+  const { error } = await db
     .from('tasks')
     .delete()
     .eq('id', taskId);
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.json({ success: true });
 };

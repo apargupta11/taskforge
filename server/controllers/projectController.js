@@ -1,15 +1,17 @@
 const { supabase } = require('../config/supabase');
+exports.getProjects = async (req, res, next) => {
+  const db = req.supabase || supabase;
 
-exports.getProjects = async (req, res) => {
-  let query = supabase
+  let query = db
     .from('projects')
     .select('*')
     .order('created_at', { ascending: false });
 
   // If not admin, only show projects they are a member of
   if (req.user.role !== 'admin') {
-    const { data: memberData } = await supabase
+    const { data: memberData } = await db
       .from('project_members')
+
       .select('project_id')
       .eq('user_id', req.user.id);
       
@@ -24,70 +26,71 @@ exports.getProjects = async (req, res) => {
 
   const { data, error } = await query;
     
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return next(error);
   res.json(data);
 };
 
-exports.createProject = async (req, res) => {
+exports.createProject = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { name, description } = req.body;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('projects')
     .insert([{ name, description, created_by: req.user.id }])
     .select()
     .single();
     
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
 
   // Add the creator as an admin member to the project automatically
-  const { error: memberError } = await supabase
+  const { error: memberError } = await db
     .from('project_members')
     .insert([{ project_id: data.id, user_id: req.user.id, role: 'admin' }]);
 
   if (memberError) {
-    return res.status(400).json({
-      error: memberError.message,
-      hint: 'Project may exist without membership. Check project_members INSERT policies in Supabase.',
-    });
+    return next(memberError);
   }
 
   res.status(201).json(data);
 };
 
-exports.addMember = async (req, res) => {
+exports.addMember = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { projectId } = req.params;
   const { user_id, role } = req.body;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('project_members')
     .insert([{ project_id: projectId, user_id, role: role || 'member' }])
     .select()
     .single();
     
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.status(201).json(data);
 };
 
-exports.removeMember = async (req, res) => {
+exports.removeMember = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { projectId, userId } = req.params;
 
-  const { error } = await supabase
+  const { error } = await db
     .from('project_members')
     .delete()
     .match({ project_id: projectId, user_id: userId });
     
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.json({ success: true });
 };
 
-exports.deleteProject = async (req, res) => {
+exports.deleteProject = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { projectId } = req.params;
 
-  const { error } = await supabase
+  const { error } = await db
     .from('projects')
     .delete()
     .eq('id', projectId);
     
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.json({ success: true, message: 'Project deleted successfully' });
 };

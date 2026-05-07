@@ -1,6 +1,6 @@
 const { createUserClient } = require('../config/supabase');
 
-exports.updateUserRole = async (req, res) => {
+exports.updateUserRole = async (req, res, next) => {
   const { id } = req.params;
   const { role } = req.body;
   const userClient = createUserClient(req.token);
@@ -24,6 +24,6 @@ exports.updateUserRole = async (req, res) => {
     .select()
     .single();
 
-  if (error) return res.status(400).json({ error: error.message });
+  if (error) return next(error);
   res.json(data);
 };

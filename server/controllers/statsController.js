@@ -1,15 +1,17 @@
 const { supabase } = require('../config/supabase');
 
-exports.getStats = async (req, res) => {
-  let query = supabase.from('tasks').select('id, status, deadline, assigned_to, project_id');
+exports.getStats = async (req, res, next) => {
+  const db = req.supabase || supabase;
+
+  let query = db.from('tasks').select('id, status, deadline, assigned_to, project_id');
   
   const { data: tasks, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return next(error);
 
   let visibleTasks = tasks;
 
   if (req.user.role !== 'admin') {
-    const { data: memberships } = await supabase
+    const { data: memberships } = await db
       .from('project_members')
       .select('project_id, role')
       .eq('user_id', req.user.id);
@@ -37,25 +39,23 @@ exports.getStats = async (req, res) => {
 
 /**
  * GET /api/stats/tasks?filter=completed|overdue|active
- * Returns the full task records (with project name) for a given filter.
- * Used by the dashboard inline panels.
  */
-exports.getTaskList = async (req, res) => {
+exports.getTaskList = async (req, res, next) => {
+  const db = req.supabase || supabase;
   const { filter } = req.query;
 
-  // Join projects so the client can display the project name
-  let query = supabase
+  let query = db
     .from('tasks')
     .select('id, title, status, priority, deadline, assigned_to, project_id, projects(name)')
     .order('created_at', { ascending: false });
 
   const { data: tasks, error } = await query;
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) return next(error);
 
   let visibleTasks = tasks;
 
   if (req.user.role !== 'admin') {
-    const { data: memberships } = await supabase
+    const { data: memberships } = await db
       .from('project_members')
       .select('project_id, role')
       .eq('user_id', req.user.id);
@@ -90,4 +90,3 @@ exports.getTaskList = async (req, res) => {
 
   res.json(filtered);
 };
-
